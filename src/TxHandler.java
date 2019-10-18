@@ -46,20 +46,21 @@ public class TxHandler {
         HashSet<Transaction> acceptedTxs = new HashSet<>();
 
         // checking each transaction for correctness
-        for (Transaction tx : possibleTxs)
+        for (Transaction tx : possibleTxs){
+            // Using the isValidTx method defined earlier in this class
             if (isValidTx(tx)) {
-
                 acceptedTxs.add(tx);
 
                 // updating the current UTXO pool as appropriate
                 for (Transaction.Input input : tx.getInputs())
                     utxoPool.removeUTXO(new UTXO(input.prevTxHash, input.outputIndex));
+
                 int index = 0;
                 for (Transaction.Output output : tx.getOutputs())
                     utxoPool.addUTXO(new UTXO(tx.getHash(), index++), output);
 
             }
-
+        }
         // returning a mutually valid array of accepted transactions
         return acceptedTxs.toArray(new Transaction[acceptedTxs.size()]);
 
