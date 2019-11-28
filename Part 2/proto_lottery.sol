@@ -16,138 +16,123 @@ player i.
 Your contract should not allow any party to cheat, and should penalize any party who
 aborts, or who doesn't comply with the protocol at any point. You have freedom in
 choosing the specifics as long as the main objective is achieved and the contract is
-secure. For example, you could assume that an admin will register three specific*/
-**/
+secure. For example, you could assume that an admin will register three specific
+Code:
+Protocol:
 
-pragma solidity 0.4.18;
+Case with 3 players,
+Each with a random choice either 0,1,2
 
-import "";
+Winner index (ch1, ch2, ch3)%3
 
+ex: 
+(1,1,1)%3 = 0
+(1,1,2)%3 = 1
+(1,2,2)%3 = 2
+
+Struct Player{
+    string name;
+    uint choice;
+}
+
+*/
+
+pragma solidity >=0.4.22 <0.7.0;
 
 /** Ethereum Lottery Smart Contract.*/
-contract Lottery is Ownable {
-    uint internal numTickets;
-    uint internal availTickets;
-    uint internal ticketPrice;
-    uint internal winningAmount;
-    bool internal gameStatus;
-    uint internal counter;
+contract Lottery {
+    //uint public winningAmount;
+    uint public total_deposit;
+    uint public min_deposit;
+    uint internal choice_sum;
+    uint winningAmount;
 
     // This declares a new complex type which will
     // be used for variables later.
     // It will represent a single voter.
-    struct Voter {
-        uint weight; // weight is accumulated by delegation
-        bool voted;  // if true, that person already voted
-        address delegate; // person delegated to
-        uint vote;   // index of the voted proposal
-    }
     struct Player{
-        byte32 name;    //Short name of the player
-        bool play;      // if the player played then true
+        address player_address;    //Short name of the player
+        string name;
+        bool played;    // if the player played then true
         uint choice;    // index of the choice either 0,1,2
+        uint deposit;   //  Deposit for their play
+        uint weight;
+        
     }
-    struct Proposal {
-        bytes32 name;   // short name (up to 32 bytes)
-        uint voteCount; // number of accumulated votes
-    }
+
 
     // mapping to have address to Player struct value.
-    mapping (address => Player) internal players;
+    mapping (uint => Player) public players;
+    address private admin;
 
+  
     // Event which would be emmitted once winner is found.
-    event Winner(uint indexed counter, address winner, string mesg);
-
-    /** getLotteryStatus function returns the Lotter status.
-      * @return numTickets The total # of lottery tickets.
-      * @return availTickets The # of available tickets.
-      * @return ticketPrice The price for one lottery ticket.
-      * @return gameStatus The Status of lottery game.
-      * @return contractBalance The total available balance of the contract.
-     */
-    function getLotteryStatus() public view returns(uint, uint, uint, bool, uint) {
-        return (numTickets, availTickets, ticketPrice, gameStatus, winningAmount);
+    event Winner(uint amount, address winner, string mesg);
+    constructor(uint deposit, address[] memory player_addresses) public payable{
+        admin = msg.sender;
+        min_deposit = deposit;
+        
+        for (uint j=0; j<3; j++){
+            players[j].player_address = player_addresses[j];
+            players[j].weight = 1;
+        }
+        // Minimum deposit required for players to participate;
     }
 
-    /** startLottery function inititates the lottery game with #tickets and ticket price.
-      * @param tickets - no of max tickets.
-      * @param price - price of the ticket.
-     */
-    function startLottery(uint tickets, uint price) public payable onlyOwner {
-        if ((tickets <= 1) || (price == 0) || (msg.value < price)) {
-            revert();
+    function play(string memory name, uint choice, uint deposit) public {
+        
+        Player storage person = players[5];
+        // bool notvalid;
+        for (uint k=0; k<3; k++){
+            if (players[k].player_address==msg.sender)
+               {person = players[k];}
         }
-        numTickets = tickets;
-        ticketPrice = price;
-        availTickets = numTickets - 1;
-        players[++counter] = owner;
-        // increase the winningAmount
-        winningAmount += msg.value;
-        // set the gameStatus to True
-        gameStatus = true;
-        playerAddresses[owner] = true;
+
+        require(!person.played && person.weight==1, "You have already chosen the value or you are not selected by the admin for play");
+        require(inRange(choice), "Please choose number 0, 1 or 2");
+        require(deposit >= min_deposit, "Your deposit value is less than minimum required");
+        person.played = true;
+        person.choice = choice;
+        person.name = name;
+        person.deposit = deposit;
+        total_deposit += person.deposit;
+        choice_sum += person.choice;
     }
 
-    /** function playLotter allows user to buy tickets and finds the winnner,
-      * when all tickets are sold out.
-     */
-    function playLottery() public payable {
-        // revert in case user already has bought a ticket OR,
-        // value sent is less than the ticket price OR,
-        // gameStatus is false.
-        if ((playerAddresses[msg.sender]) || (msg.value < ticketPrice) || (!gameStatus)) {
-            revert();
-        }
-        availTickets = availTickets - 1;
-        players[++counter] = msg.sender;
-        winningAmount += msg.value;
-        playerAddresses[msg.sender] = true;
-        // reset the Lotter as soon as availTickets are zero.
-        if (availTickets == 0) {
-            resetLottery();
+    function inRange(uint check) internal pure returns(bool isIndeed) {
+        return check >= 0 && check <= 2;
+    }
+    
+    function all_played() internal view{
+        for (uint i=0; i<3; i++){
+           require(players[i].played, "All players did not participate");
         }
     }
 
-    /** getGameStatus function to get value of gameStatus.
-      * @return gameStatus - current status of the lottery game.
-     */
-    function getGameStatus() public view returns(bool) {
-        return gameStatus;
+    /** getWinner getter function */
+    function getWinner() public payable returns(uint random_index){
+        all_played();
+        random_index = (choice_sum)%3;
+        address winnerAddress = players[random_index].player_address;
+        winningAmount = total_deposit;
+        emit Winner(winningAmount,winnerAddress,"You are winner");
+        
+        //reset = "Game is been reset, you could play again";
     }
-
-    /** endLottery function which would be called only by Owner.
-     */
-    function endLottery() public onlyOwner {
+    
+    function winner() public returns(string memory name){
+        uint random_index = getWinner();
+        name = players[random_index].name;
         resetLottery();
     }
-
-    /** getWinner getter function.
-      * this calls getRandomNumber function and
-      * finds the winner using players mapping
-     */
-    function getWinner() internal {
-        uint winnerIndex = getRandomNumber();
-        address winnerAddress = players[winnerIndex];
-        Winner(winnerIndex, winnerAddress, "Winner Found!");
-        winnerAddress.transfer(winningAmount);
-    }
-
-    /** getRandomNumber function, which finds the random number using counter.
-     */
-    function getRandomNumber() internal view returns(uint) {
-        uint random = uint(block.blockhash(block.number-1))%counter + 1;
-        return random;
-    }
-
-    /** resetLottery function resets lottery and find the Winner.
-     */
+    
     function resetLottery() internal {
-        gameStatus = false;
-        getWinner();
-        winningAmount = 0;
-        numTickets = 0;
-        availTickets = 0;
-        ticketPrice = 0;
-        counter = 0;
+        total_deposit = 0;
+        min_deposit = 0;
+        choice_sum = 0;
+        for (uint i=0; i<3; i++){
+           players[i].played = false;
+        }
+        
     }
 }
